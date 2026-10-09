@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
@@ -396,6 +397,55 @@ it("opens directly into a newly created worktree shell, and toggles back without
   } finally {
     slot.lifecycle.unmount();
     prompt.remove();
+  }
+});
+
+it("keeps BB clear behind the terminal and dismisses without replacing or closing its worktree shell", async () => {
+  // Apply the production backdrop rules: jsdom cannot parse the full stylesheet's
+  // container queries, and Vitest does not inject imported CSS into the document.
+  const stylesheet = document.createElement("style");
+  stylesheet.textContent = readFileSync("styles.css", "utf8")
+    .match(/\.bb-fg-backdrop(?:\[data-state="[^"]+"\])?\s*\{[^}]*\}/g)!
+    .join("\n");
+  document.head.append(stylesheet);
+  const prompt = document.createElement("textarea");
+  document.body.append(prompt);
+  prompt.focus();
+  const slot = await setup();
+  try {
+    await act(async () => toggle(prompt));
+    const shell = await slot.findByRole("textbox", { name: "Shell created-1" });
+    await waitFor(() => expect(document.activeElement).toBe(shell));
+    const backdrop = slot.container.querySelector<HTMLElement>(".bb-fg-backdrop")!;
+    await waitFor(() => expect(backdrop.dataset.state).toBe("open"));
+    const backdropStyle = getComputedStyle(backdrop);
+    expect(backdropStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    for (const property of ["background-image", "filter", "backdrop-filter", "-webkit-backdrop-filter"])
+      expect(["", "none"]).toContain(backdropStyle.getPropertyValue(property));
+    expect(backdropStyle.pointerEvents).toBe("auto");
+    expect(backdropStyle.visibility).toBe("visible");
+    expect(backdropStyle.zIndex).toBe("54");
+
+    await act(async () => fireEvent.pointerDown(backdrop));
+    expect(windowController.isOpen()).toBe(false);
+    expect(document.activeElement).toBe(prompt);
+    expect(backdrop.dataset.state).toBe("closed");
+    expect(getComputedStyle(backdrop).pointerEvents).toBe("none");
+    expect(getComputedStyle(backdrop).visibility).toBe("hidden");
+    expect(shell.isConnected).toBe(true);
+
+    await act(async () => toggle(prompt));
+    await waitFor(() => expect(document.activeElement).toBe(shell));
+    expect(slot.getByRole("textbox", { name: "Shell created-1" })).toBe(shell);
+    await act(async () => toggle(shell));
+    expect(windowController.isOpen()).toBe(false);
+    expect(slot.inspection.rpcCalls.filter((call) => call.method === "openTab").map((call) => call.input))
+      .toEqual([{ scopeKey: "worktree:A:one", reuseExisting: true, cols: 80, rows: 24 }]);
+    expect(slot.inspection.rpcCalls.some((call) => ["closeTab", "restartTab"].includes(call.method))).toBe(false);
+  } finally {
+    slot.lifecycle.unmount();
+    prompt.remove();
+    stylesheet.remove();
   }
 });
 

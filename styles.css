@@ -50,11 +50,11 @@
     env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
 
-/* The surroundings return to BB without ending a shell. */
+/* Keep BB visible; the transparent click target hides without ending a shell. */
 .bb-fg-backdrop {
   position: fixed;
   inset: 0;
-  background: rgb(0 0 0 / 0.28);
+  background: transparent;
 }
 
 .bb-fg-backdrop[data-state="closed"] {
