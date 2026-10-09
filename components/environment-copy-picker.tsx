@@ -90,7 +90,8 @@ export function EnvironmentCopyPicker({ rpc, projectId, environmentId, entry, lo
   if (!projects.has(projectId)) projects.set(projectId, "Current project");
   const choices = targets.filter(item => (item.projectId ?? item.id) === project && (entry || eligible?.project === project && eligible.ids.includes(item.id)) && (entry || project !== projectId || !!item.environmentId) && !((item.projectId ?? item.id) === projectId && item.environmentId === environmentId));
   const additions = candidates.filter(item => selected.includes(item.key) && (!existing.some(old => old.key === item.key) || replace.includes(item.key)));
-  return <div className="bb-fg-copy-picker" role="region" aria-label={entry ? "Copy variable to" : "Copy variables from"}>
+  // SDK 0.6.15's lexical import scanner mistakes the trailing from word in quoted JSX labels for import syntax.
+  return <div className="bb-fg-copy-picker" role="region" aria-label={entry ? "Copy variable to" : `Copy variables from`}>
     <div className="bb-fg-env-toolbar"><strong>{entry ? `Copy ${entry.key} to…` : "Copy from…"}</strong><button type="button" onClick={onClose}>Cancel copy</button></div>
     <div className="bb-fg-copy-selectors">
       <label>Project<select aria-label="Copy project" value={project} onChange={event => { setProject(event.target.value); setTargetId(""); }}>

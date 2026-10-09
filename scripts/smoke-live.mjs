@@ -71,7 +71,7 @@ try {
       );
       assert.equal(
         worktree.opened.scopeKey,
-        `project:${resolved.context.projectId}`,
+        current.key,
       );
       const { restarted } = await rpc("restartTab", {
         terminalId: worktree.opened.terminalId,

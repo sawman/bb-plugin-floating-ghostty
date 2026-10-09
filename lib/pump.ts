@@ -451,6 +451,7 @@ export class TerminalPump {
   }
 
   private setStatus(status: TabStatus, detail: string | null = null): void {
+    if (this.disposed) return;
     if (this.status === status && detail === null) return;
     this.status = status;
     this.options.onStatus(status, detail);
@@ -629,6 +630,7 @@ export class TerminalPump {
       if (!this.disposed) {
         this.resetWriter = new TerminalResetWriter();
         await this.initialize(true);
+        if (this.disposed) return;
         this.presentation.reset();
         for (const chunk of result.chunks) {
           await this.writeOutput(base64ToBytes(chunk.dataBase64), !result.respondToQueries);

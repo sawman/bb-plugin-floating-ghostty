@@ -13,16 +13,19 @@ import {
 import { isolateTerminalKey } from "../lib/keyboard";
 import { TerminalPump } from "../lib/pump";
 
-const assets = vi.hoisted(() => ({ url: "" }));
+const assets = vi.hoisted(() => ({ url: "", pendingLoad: undefined as Promise<void> | undefined, loads: 0 }));
 vi.mock("../lib/ghostty", async (original) => {
   const actual = await original<typeof import("../lib/ghostty")>();
   const { GhosttyCore } = await import("@wterm/ghostty");
   return {
     ...actual,
-    loadCore: async () =>
-      actual.supportAnyEventMouseMode(
+    loadCore: async () => {
+      assets.loads++;
+      await assets.pendingLoad;
+      return actual.supportAnyEventMouseMode(
         await GhosttyCore.load({ wasmPath: assets.url }),
-      ),
+      );
+    },
   };
 });
 const pumps: TerminalPump[] = [];
@@ -60,6 +63,7 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  assets.pendingLoad = undefined;
   cleanup();
   for (const pump of pumps.splice(0)) pump.dispose();
   document.body.replaceChildren();
@@ -259,6 +263,29 @@ it("cleans up the DOM and ignores pending output after disposal", async () => {
   await new Promise((resolve) => setTimeout(resolve, 100));
   expect(container.childElementCount).toBe(0);
   expect(call.mock.calls).toHaveLength(count);
+});
+
+it("does not publish replay state when disposed during renderer replacement", async () => {
+  let finishRead!: (result: ReturnType<typeof output>) => void;
+  const call = vi.fn((method: string) => method === "read"
+    ? new Promise<ReturnType<typeof output>>((resolve) => { finishRead = resolve; })
+    : Promise.resolve({ ok: true }));
+  const { pump, container, onStatus, onTitle } = createPump(call as any);
+  await vi.waitFor(() => expect(call).toHaveBeenCalledWith("read", expect.anything()));
+  let finishLoad!: () => void;
+  assets.pendingLoad = new Promise<void>((resolve) => { finishLoad = resolve; });
+  const before = assets.loads;
+  finishRead(output("late\x1b]0;late-title\x07"));
+  await vi.waitFor(() => expect(assets.loads).toBeGreaterThan(before));
+  pump.dispose();
+  onStatus.mockClear();
+  onTitle.mockClear();
+  finishLoad();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(container.childElementCount).toBe(0);
+  expect(onStatus).not.toHaveBeenCalled();
+  expect(onTitle).not.toHaveBeenCalled();
+  expect(call).toHaveBeenCalledTimes(1);
 });
 
 it("does not steal search focus when Ghostty finishes loading behind a picker", async () => {

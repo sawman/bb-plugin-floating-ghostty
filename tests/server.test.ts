@@ -94,6 +94,59 @@ async function setup(settings: Record<string, boolean | string> = {}, beforeHost
 }
 
 describe("Floating Ghostty backend", () => {
+  it("closes only the late PTY from a timed-out create", async () => {
+    const { call, open, harness } = await setup();
+    const existing = await open();
+    let complete!: (session: unknown) => void;
+    harness.inspection.sdk.stub("terminals.create", () => new Promise((resolve) => { complete = resolve; }));
+    vi.useFakeTimers();
+    try {
+      const opening = call("openTab", { scopeKey: "home:local", cols: 80, rows: 24 });
+      const rejected = expect(opening).rejects.toThrow("terminals.create timed out");
+      await vi.advanceTimersByTimeAsync(5001);
+      await rejected;
+      complete({ id: "late-pty", initialCwd: "/tmp", status: "running", exitCode: null });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(harness.inspection.sdk.callsTo("terminals.close").map((entry) => entry[0]))
+        .toEqual([{ terminalId: "late-pty", mode: "force" }]);
+      expect(await call("init", null)).toMatchObject({ snapshot: { tabs: [{ terminalId: existing.opened.terminalId }] } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    { status: "destroyed", phase: "destroyed", hostLifecycle: "active" },
+    { status: "ready", phase: "teardown", hostLifecycle: "active" },
+    { status: "ready", phase: "destroyed", hostLifecycle: "active" },
+    { status: "ready", phase: "active", hostLifecycle: "removing" },
+    { status: "ready", phase: "active", hostLifecycle: "removed" },
+  ])("rejects unavailable current SDK environments: %j", async ({ status, phase, hostLifecycle }) => {
+    const { call, harness } = await setup();
+    harness.inspection.sdk.stub("environments.get", async () => ({
+      id: "one", projectId: "A", path: "/a/one", hostId: "local",
+      status, hostLifecycle, lifecycle: { phase, retireAt: null, teardown: null },
+    }));
+    await expect(call("openTab", { scopeKey: "worktree:A:one", cols: 80, rows: 24 }))
+      .rejects.toThrow("no longer available");
+    await expect(call("saveProjectEnvironment", { projectId: "A", environmentId: "one", text: "KEY=value", expectedRevision: 0 }))
+      .rejects.toThrow("no longer available");
+    expect(harness.inspection.sdk.callsTo("terminals.create")).toHaveLength(0);
+    expect(harness.experimental_hostRpcCalls).toHaveLength(0);
+  });
+
+  it("keeps a ready retiring worktree available until teardown starts", async () => {
+    const { call, harness } = await setup();
+    harness.inspection.sdk.stub("environments.get", async () => ({
+      id: "one", projectId: "A", path: "/a/one", hostId: "local", status: "ready",
+      hostLifecycle: "active", lifecycle: { phase: "retiring", retireAt: Date.now() + 60000, teardown: null },
+    }));
+    expect(await call("openTab", { scopeKey: "worktree:A:one", cols: 80, rows: 24 }))
+      .toMatchObject({ opened: { scopeKey: "worktree:A:one" } });
+    expect(harness.inspection.sdk.callsTo("terminals.create")[0]?.[0])
+      .toMatchObject({ scope: { kind: "environment", environmentId: "one" } });
+  });
+
   it("keeps the raw project environment vault out of plugin settings", async () => {
     const { harness } = await setup();
     expect(harness.registrations.settingsDescriptors).not.toHaveProperty(

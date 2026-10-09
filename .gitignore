@@ -1,6 +1,7 @@
 dist/
 node_modules/
 coverage/
+.agents/memory/
 *.log
 .DS_Store
 .env

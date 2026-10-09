@@ -104,9 +104,19 @@ existing bash DEBUG trap is preserved and may limit automatic command reporting.
 - Wheel/trackpad history scrolling and alternate-screen app scrolling. Hold Shift
   while scrolling to bypass an application's mouse reporting and scroll history.
 
-## Install locally
+## Install from this fork
 
-Requires BB 0.42 or newer and plugin SDK 0.4.47 or a compatible 0.4.x release.
+This compatibility update targets **BB 0.45.0 and SDK 0.6.15**. Local tests,
+no-emit typechecking (including the host entry), SDK checks, and production builds
+use those exact versions. The manifest accepts BB `>=0.45.0 <0.46.0` and SDK
+`>=0.6.15 <0.7.0`; earlier hosts and new minor API surfaces need another audit.
+This fork retains the Floating Ghostty identity and upstream attribution.
+
+```sh
+bb plugin install git:https://github.com/sawman/bb-plugin-floating-ghostty
+```
+
+For a local development checkout:
 
 ```sh
 npm ci --include=dev
@@ -176,6 +186,9 @@ The tests cover the SDK RPC boundary, ownership checks, concurrent tab creation,
 persistence, window geometry, the actual pinned Ghostty WASM, Unicode, TUI screen
 switches, replay suppression, hidden-tab polling, input, disposal, and overlay
 registration with the BB frontend harness.
+The test setup explicitly uses jsdom's browser storage on Node 26, whose own
+process-global Web Storage otherwise masks it. A shell-integration test is skipped
+when its shell executable is unavailable.
 
 ### Environment inheritance contract
 
@@ -217,8 +230,11 @@ npm run test:live
 ```
 
 Desktop appearance, interaction with BB’s native shortcut handler, and mobile
-keyboard layout still need a manual visual check. Automated access to the BB
-window was unavailable during this implementation.
+keyboard layout still need a manual visual check. The 0.45 compatibility update
+has not been installed or live-smoked by its implementation thread; run the live
+smoke only after installing the reviewed fork. It creates its own worktree and
+home shells, closes only those terminal IDs in `finally`, and restores the
+previous selection when that terminal still exists.
 
 ## Implementation
 
@@ -251,6 +267,27 @@ window was unavailable during this implementation.
 The WASM endpoint resolves the binary from the exact pinned `@wterm/ghostty`
 package. There is no duplicate checked-in binary to fall out of sync. Runtime
 packages are regular dependencies so BB can build this plugin from a Git source.
+The clean packaging check used `npm ci --omit=dev --omit=optional --ignore-scripts`
+and `bb plugin build`, including the host artifact. The 577,013-byte WASM remains
+in the pinned runtime package and the Nerd Font is embedded in the built CSS.
+Host-shimmed SDK, React, React DOM, portal Radix families and utility packages
+remain development dependencies; the frontend build uses BB's shared runtime.
+No SDK server entry or Node modules belong in the frontend bundle.
+
+### Host compatibility caveats
+
+The opt-in native launcher adapter still depends on BB's private
+`#file-search-result-start-terminal`, `[data-testid="command-palette"]`, option
+markup and the English `Open terminal` label. The settings presentation adapter
+depends on `[data-testid="plugin-detail-floating-ghostty"]`, setting aria-labels
+and `[data-control-placement]`. Portaled plugin controls use BB's overlay/root
+data attributes for host shortcut isolation. These are bounded DOM dependencies,
+not public SDK guarantees; recheck them on host upgrades. The native launcher
+override remains disabled by default. Footer and Ctrl+backtick access use the
+existing plugin surface. Unloading the UI preserves BB-managed PTYs.
+Timed-out creates reap their own late PTY if the host later returns its ID;
+cleanup failure is logged without shell contents or environment values. A host
+that never returns the create result cannot be cleaned up by terminal ID here.
 
 This first version focuses on the floating terminal. Wterm's upload UI and
 file-preview links are not included. Terminal-driven OSC 52 clipboard writes are

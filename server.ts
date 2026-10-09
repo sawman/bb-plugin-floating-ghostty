@@ -922,7 +922,10 @@ export default async function plugin(bb: BbPluginApi) {
       environment.projectId !== projectId ||
       !environment.path ||
       environment.status === "destroyed" ||
-      environment.status === "destroying"
+      environment.lifecycle?.phase === "teardown" ||
+      environment.lifecycle?.phase === "destroyed" ||
+      environment.hostLifecycle === "removing" ||
+      environment.hostLifecycle === "removed"
     ) {
       throw new Error("That worktree is no longer available.");
     }
@@ -1036,23 +1039,30 @@ export default async function plugin(bb: BbPluginApi) {
       });
       environmentFile = prepared.path;
     }
-    const created = await withTimeout(
-      bb.sdk.terminals.create({
-        cols,
-        rows,
-        scope:
-          scope.kind === "worktree"
-            ? {
-                kind: "environment",
-                environmentId: ownerOf(scope.key).environmentId!,
-              }
-            : { kind: "host_path", hostId: scope.hostId, cwd: scope.cwd },
-        start: { mode: "command", command: shellStartCommand(environmentFile) },
-        title: "Shell",
-      }),
-      CREATE_TIMEOUT_MS,
-      "terminals.create",
-    );
+    const creatingSession = bb.sdk.terminals.create({
+      cols,
+      rows,
+      scope:
+        scope.kind === "worktree"
+          ? {
+              kind: "environment",
+              environmentId: ownerOf(scope.key).environmentId!,
+            }
+          : { kind: "host_path", hostId: scope.hostId, cwd: scope.cwd },
+      start: { mode: "command", command: shellStartCommand(environmentFile) },
+      title: "Shell",
+    });
+    const created = await withTimeout(creatingSession, CREATE_TIMEOUT_MS, "terminals.create")
+      .catch((error) => {
+        if (error instanceof SdkTimeoutError) {
+          // Timing out does not cancel the host spawn. Reap only this late
+          // result; it was never attached to the persistent inventory.
+          void creatingSession.then((session) =>
+            bb.sdk.terminals.close({ terminalId: session.id, mode: "force" }),
+          ).catch(() => bb.log.warn("Could not clean up a timed-out terminal creation."));
+        }
+        throw error;
+      });
     unattachedSessions.add(created.id);
     bb.log.info(`opened ${created.id} in ${created.initialCwd}`);
     return {
