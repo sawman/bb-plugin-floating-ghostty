@@ -222,7 +222,11 @@ Regression coverage lives in `lib/context.test.ts` (exact matching and selection
 
 An additional smoke test exercises the **running BB server**, creates a temporary
 shell, sends input, renders its output through the real Ghostty engine, tests
-resize/replay/restart and shell exit detection, and cleans up its test shells:
+resize/replay/restart and shell exit detection, and cleans up its test shells.
+
+The smoke uses Node 22.19+ and waits for the shell's first interactive prompt
+before sending its command. Startup has a separate 15-second deadline; the
+five-second command/output check still requires the marker in real Ghostty cells.
 
 ```sh
 npm run test:live

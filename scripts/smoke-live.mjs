@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { GhosttyCore } from "@wterm/ghostty";
+import { waitForShellPrompt } from "./smoke-live-readiness.ts";
 
 const base = process.env.BB_SERVER_URL ?? "http://127.0.0.1:38886";
 const plugin = `${base}/api/v1/plugins/floating-ghostty`;
@@ -12,12 +13,12 @@ const titlesIn = (output) =>
   [...output.matchAll(/\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)/g)].map(
     (match) => match[1],
   );
-async function rpc(method, input) {
+async function rpc(method, input, timeoutMs = 15000) {
   const response = await fetch(`${plugin}/rpc/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const result = await response.json();
   if (!response.ok || !result.ok)
@@ -119,13 +120,38 @@ try {
   });
   owned.add(opened.terminalId);
   await rpc("resize", { terminalId: opened.terminalId, cols: 100, rows: 32 });
+  const renderOutput = async (output) => {
+    const replies = [];
+    for (const chunk of output.chunks) {
+      // Match Wterm's per-WASM-chunk response drain rather than accumulating
+      // all startup queries until the whole output batch has been rendered.
+      core.writeRaw(Buffer.from(chunk.dataBase64, "base64"), () => {
+        let response;
+        while ((response = core.getResponse()) !== null) replies.push(response);
+      });
+    }
+    for (const response of replies)
+      await rpc("write", {
+        terminalId: opened.terminalId,
+        dataBase64: Buffer.from(response).toString("base64"),
+      });
+  };
+  const ready = await waitForShellPrompt({
+    read: (sinceSeq, firstAttachment, remainingMs) => rpc("read", {
+      terminalId: opened.terminalId,
+      sinceSeq,
+      ...(firstAttachment ? { replay: true, attach: true } : {}),
+    }, remainingMs),
+    consume: renderOutput,
+  });
+  console.log(`PASS: interactive prompt ready (${ready.elapsedMs}ms, ${ready.bytes} bytes)`);
   await rpc("write", {
     terminalId: opened.terminalId,
     dataBase64: Buffer.from("printf 'FG_%s_%s\\n' LIVE OK\r").toString(
       "base64",
     ),
   });
-  let seq = 0;
+  let seq = ready.nextSeq;
   let found = false;
   for (let attempt = 0; attempt < 50 && !found; attempt++) {
     const output = await rpc("read", {
@@ -133,15 +159,7 @@ try {
       sinceSeq: seq,
     });
     seq = output.nextSeq;
-    for (const chunk of output.chunks)
-      core.writeRaw(Buffer.from(chunk.dataBase64, "base64"));
-    let response;
-    while ((response = core.getResponse()) !== null) {
-      await rpc("write", {
-        terminalId: opened.terminalId,
-        dataBase64: Buffer.from(response).toString("base64"),
-      });
-    }
+    await renderOutput(output);
     let screen = "";
     for (let row = 0; row < core.getRows(); row++) {
       for (let col = 0; col < core.getCols(); col++)
