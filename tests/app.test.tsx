@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 import { readFileSync } from "node:fs";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { windowController } from "../lib/controller";
 import type { ServerTab } from "../lib/tabs";
+
+// Import the full app once before behavioral tests. Cold module loading can
+// exceed their interaction budgets on a busy host; timed-out imports otherwise
+// finish inside the next test and contaminate React act() state.
+beforeAll(async () => {
+  await loadPluginApp(() => import("../app"));
+}, 120000);
 
 // Exercise the complete overlay/navigation UI; Ghostty itself has real-WASM pump tests.
 vi.mock("../components/terminal-view", async () => {

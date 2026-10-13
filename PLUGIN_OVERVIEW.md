@@ -45,6 +45,6 @@ is disabled while the override is enabled. The full terminal inherits BB's theme
 **Override, recentering, and custom sizing are off by default.**
 
 Uses Ghostty's WebAssembly engine through Wterm; native Ghostty is not required.
-BB 0.42+ and SDK 0.4.47+ within the 0.4 series are required.
+BB 0.46.x and SDK >=0.6.37 within the 0.6 series are required.
 
 Inspired by Floating Terminal and Wterm Terminal Preview. MIT licensed.

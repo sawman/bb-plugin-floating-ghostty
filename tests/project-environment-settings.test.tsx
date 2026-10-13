@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
-import { expect, it, vi } from "vitest";
+import { beforeAll, expect, it, vi } from "vitest";
 import { act, fireEvent, within } from "@testing-library/react";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
+
+// Import the full app once before behavioral tests. Cold module loading can
+// exceed their interaction budgets on a busy host; timed-out imports otherwise
+// finish inside the next test and contaminate React act() state.
+beforeAll(async () => {
+  await loadPluginApp(() => import("../app"));
+}, 120000);
 
 vi.stubGlobal("matchMedia", () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
 vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });

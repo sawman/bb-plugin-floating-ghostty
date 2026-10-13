@@ -106,10 +106,10 @@ existing bash DEBUG trap is preserved and may limit automatic command reporting.
 
 ## Install from this fork
 
-This compatibility update targets **BB 0.45.0 and SDK 0.6.15**. Local tests,
+This compatibility update targets **BB 0.46.0 and SDK 0.6.37**. Local tests,
 no-emit typechecking (including the host entry), SDK checks, and production builds
-use those exact versions. The manifest accepts BB `>=0.45.0 <0.46.0` and SDK
-`>=0.6.15 <0.7.0`; earlier hosts and new minor API surfaces need another audit.
+use those exact versions. The manifest accepts BB `>=0.46.0 <0.47.0` and SDK
+`>=0.6.37 <0.7.0`; earlier hosts and new minor API surfaces need another audit.
 This fork retains the Floating Ghostty identity and upstream attribution.
 
 ```sh
@@ -230,7 +230,7 @@ npm run test:live
 ```
 
 Desktop appearance, interaction with BB’s native shortcut handler, and mobile
-keyboard layout still need a manual visual check. The 0.45 compatibility update
+keyboard layout still need a manual visual check. The 0.46 compatibility update
 has not been installed or live-smoked by its implementation thread; run the live
 smoke only after installing the reviewed fork. It creates its own worktree and
 home shells, closes only those terminal IDs in `finally`, and restores the
@@ -285,6 +285,15 @@ data attributes for host shortcut isolation. These are bounded DOM dependencies,
 not public SDK guarantees; recheck them on host upgrades. The native launcher
 override remains disabled by default. Footer and Ctrl+backtick access use the
 existing plugin surface. Unloading the UI preserves BB-managed PTYs.
+
+The BB 0.46 audit compared SDK 0.6.15 with 0.6.37 and checked the exact BB
+0.46 source. The terminal APIs, content-script cleanup, app overlay, footer
+action, and host RPC contracts used here are unchanged. The private launcher,
+palette, settings, and portal selectors still match. BB moved its native mobile
+terminal controls into its terminal view; this plugin owns its renderer and
+controls independently. Existing regressions cover transparent outside-click
+hiding, focus return, worktree selection, and shell persistence. Live visual
+and shortcut verification remains a post-install gate.
 Timed-out creates reap their own late PTY if the host later returns its ID;
 cleanup failure is logged without shell contents or environment values. A host
 that never returns the create result cannot be cleaned up by terminal ID here.
